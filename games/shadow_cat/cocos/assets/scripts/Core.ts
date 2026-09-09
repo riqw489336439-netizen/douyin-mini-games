@@ -1,5 +1,7 @@
 export type Vec={x:number,y:number};
 
+export type ShadowMode='mirror'|'lag'|'light-shift';
+
 export interface ShadowCatLevel {
   id:number;
   realSwitches:number;
@@ -7,6 +9,9 @@ export interface ShadowCatLevel {
   lightGates:number;
   dualExit:boolean;
   movingShadow:boolean;
+  shadowMode:ShadowMode;
+  shadowLagSteps:number;
+  lightShift:number;
   timeLimit:number;
 }
 
@@ -18,8 +23,10 @@ export class Core {
   shadowActivated=0;
   elapsed=0;
   finished=false;
+  moves=0;
   private realDone=new Set<number>();
   private shadowDone=new Set<number>();
+  private shadowQueue:Vec[]=[];
 
   constructor(public level:ShadowCatLevel){ }
 
@@ -28,9 +35,22 @@ export class Core {
     const clamp=(v:number,min:number,max:number)=>Math.max(min,Math.min(max,v));
     this.real.x=clamp(this.real.x+dx,-300,300);
     this.real.y=clamp(this.real.y+dy,-250,250);
-    // 影子与现实猫保持镜像运动。
-    this.shadow.x=clamp(this.shadow.x+dx,-300,300);
-    this.shadow.y=clamp(this.shadow.y-dy,-250,250);
+    this.moves++;
+
+    const mirrored={x:dx,y:-dy};
+    if(this.level.shadowMode==='lag'){
+      this.shadowQueue.push(mirrored);
+      if(this.shadowQueue.length>this.level.shadowLagSteps){
+        const step=this.shadowQueue.shift()!;
+        this.shadow.x=clamp(this.shadow.x+step.x,-300,300);
+        this.shadow.y=clamp(this.shadow.y+step.y,-250,250);
+      }
+      return;
+    }
+
+    const shift=this.level.shadowMode==='light-shift'?(this.light?this.level.lightShift:-this.level.lightShift):0;
+    this.shadow.x=clamp(this.shadow.x+mirrored.x+shift,-300,300);
+    this.shadow.y=clamp(this.shadow.y+mirrored.y,-250,250);
   }
 
   tick(dt:number){
