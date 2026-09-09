@@ -30,11 +30,12 @@ export class Core {
 
   constructor(public level:ShadowCatLevel){ }
 
+  private clamp(v:number,min:number,max:number){return Math.max(min,Math.min(max,v));}
+
   move(dx:number,dy:number){
     if(this.finished)return;
-    const clamp=(v:number,min:number,max:number)=>Math.max(min,Math.min(max,v));
-    this.real.x=clamp(this.real.x+dx,-300,300);
-    this.real.y=clamp(this.real.y+dy,-250,250);
+    this.real.x=this.clamp(this.real.x+dx,-300,300);
+    this.real.y=this.clamp(this.real.y+dy,-250,250);
     this.moves++;
 
     const mirrored={x:dx,y:-dy};
@@ -42,25 +43,45 @@ export class Core {
       this.shadowQueue.push(mirrored);
       if(this.shadowQueue.length>this.level.shadowLagSteps){
         const step=this.shadowQueue.shift()!;
-        this.shadow.x=clamp(this.shadow.x+step.x,-300,300);
-        this.shadow.y=clamp(this.shadow.y+step.y,-250,250);
+        this.applyShadowStep(step);
       }
       return;
     }
 
-    const shift=this.level.shadowMode==='light-shift'?(this.light?this.level.lightShift:-this.level.lightShift):0;
-    this.shadow.x=clamp(this.shadow.x+mirrored.x+shift,-300,300);
-    this.shadow.y=clamp(this.shadow.y+mirrored.y,-250,250);
+    // 光照偏移只改变影子相对现实猫的“目标偏移”，而不是每走一步无限累计漂移。
+    this.applyShadowStep(mirrored);
   }
 
-  tick(dt:number){
-    if(this.finished)return;
-    this.elapsed+=Math.max(0,dt);
+  private applyShadowStep(step:Vec){
+    this.shadow.x=this.clamp(this.shadow.x+step.x,-300,300);
+    this.shadow.y=this.clamp(this.shadow.y+step.y,-250,250);
+    if(this.level.shadowMode==='light-shift'){
+      const desired=this.clamp(this.real.x+(this.light?this.level.lightShift:-this.level.lightShift),-300,300);
+      this.shadow.x=desired;
+    }
   }
 
   toggleLight(){
     if(this.finished)return;
     this.light=1-this.light;
+    if(this.level.shadowMode==='light-shift'){
+      this.shadow.x=this.clamp(this.real.x+(this.light?this.level.lightShift:-this.level.lightShift),-300,300);
+    }
+  }
+
+  flushShadowLag(){
+    if(this.finished||this.level.shadowMode!=='lag')return false;
+    const step=this.shadowQueue.shift();
+    if(!step)return false;
+    this.applyShadowStep(step);
+    return true;
+  }
+
+  pendingShadowSteps(){return this.shadowQueue.length;}
+
+  tick(dt:number){
+    if(this.finished)return;
+    this.elapsed+=Math.max(0,dt);
   }
 
   activateReal(index?:number){
@@ -80,8 +101,9 @@ export class Core {
 
   canExit(realAtExit:boolean,shadowAtExit:boolean){
     const switchesReady=this.realActivated>=this.level.realSwitches && this.shadowActivated>=this.level.shadowSwitches;
+    const lagReady=this.level.shadowMode!=='lag'||this.shadowQueue.length===0;
     const exitReady=this.level.dualExit ? realAtExit&&shadowAtExit : realAtExit||shadowAtExit;
-    return switchesReady&&exitReady;
+    return switchesReady&&lagReady&&exitReady;
   }
 
   complete(realAtExit:boolean,shadowAtExit:boolean){
