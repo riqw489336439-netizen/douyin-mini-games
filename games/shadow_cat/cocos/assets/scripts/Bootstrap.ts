@@ -1,6 +1,7 @@
 import {
   _decorator, Component, Node, Canvas, Camera, Layers, UITransform,
-  Label, Color, Vec3, director, input, Input, EventKeyboard, KeyCode, Graphics
+  Label, Color, Vec3, director, input, Input, EventKeyboard, KeyCode,
+  Graphics, game, Game, view
 } from 'cc';
 import { GameFlow } from './GameFlow';
 import { InputController, MoveDir } from './InputController';
@@ -14,20 +15,28 @@ export class ShadowCatBootstrap extends Component {
   private inputCtl:InputController|null=null;
   private resolver:InteractionResolver|null=null;
   private root:Node|null=null;
+  private contentRoot:Node|null=null;
   private status:Label|null=null;
   private hint:Label|null=null;
   private realCat:Node|null=null;
   private shadowCat:Node|null=null;
   private levelsPage=0;
-  private lastPage='';
+  private lastTapAt=0;
+  private readonly tapGuardMs=120;
 
   start(){
     this.ensureUiRoot();
     this.showHome();
     input.on(Input.EventType.KEY_DOWN,this.onKeyDown,this);
+    game.on(Game.EVENT_HIDE,this.onAppHide,this);
+    game.on(Game.EVENT_SHOW,this.onAppShow,this);
   }
 
-  onDestroy(){ input.off(Input.EventType.KEY_DOWN,this.onKeyDown,this); }
+  onDestroy(){
+    input.off(Input.EventType.KEY_DOWN,this.onKeyDown,this);
+    game.off(Game.EVENT_HIDE,this.onAppHide,this);
+    game.off(Game.EVENT_SHOW,this.onAppShow,this);
+  }
 
   update(dt:number){
     const before=this.flow.page;
@@ -42,12 +51,26 @@ export class ShadowCatBootstrap extends Component {
     }
   }
 
+  private onAppHide(){
+    this.flow.onHide();
+    if(this.flow.page==='playing') this.pause();
+  }
+
+  private onAppShow(){
+    this.flow.onShow();
+    // 从系统后台返回后保持暂停，让玩家主动继续，避免误触和计时突变。
+  }
+
   private ensureUiRoot(){
     if(this.root)return;
+    const scene=director.getScene();
+    if(!scene)return;
+
     const canvasNode=new Node('ShadowCatCanvas');
     canvasNode.layer=Layers.Enum.UI_2D;
     canvasNode.addComponent(Canvas);
     canvasNode.addComponent(UITransform).setContentSize(720,1280);
+
     const cameraNode=new Node('UICamera');
     cameraNode.layer=Layers.Enum.UI_2D;
     const cam=cameraNode.addComponent(Camera);
@@ -55,13 +78,25 @@ export class ShadowCatBootstrap extends Component {
     cam.visibility=Layers.Enum.UI_2D;
     cameraNode.setPosition(0,0,1000);
     canvasNode.addChild(cameraNode);
-    director.getScene()?.addChild(canvasNode);
+
+    const content=new Node('SafeContent');
+    content.layer=Layers.Enum.UI_2D;
+    content.addComponent(UITransform).setContentSize(720,1280);
+    canvasNode.addChild(content);
+
+    // 依据可见区域做保守缩放，重要按钮再额外留出上下边距。
+    const visible=view.getVisibleSize();
+    const scale=Math.min(1,visible.width/720,visible.height/1280);
+    content.setScale(scale,scale,1);
+
+    scene.addChild(canvasNode);
     this.root=canvasNode;
+    this.contentRoot=content;
   }
 
   private clear(){
-    if(!this.root)return;
-    [...this.root.children].forEach(n=>{if(n.name!=='UICamera')n.destroy();});
+    if(!this.contentRoot)return;
+    [...this.contentRoot.children].forEach(n=>n.destroy());
     this.status=null; this.hint=null; this.realCat=null; this.shadowCat=null;
   }
 
@@ -69,26 +104,40 @@ export class ShadowCatBootstrap extends Component {
     const n=new Node('Text'); n.layer=Layers.Enum.UI_2D;
     n.addComponent(UITransform).setContentSize(660,90);
     const l=n.addComponent(Label); l.string=text; l.fontSize=size; l.lineHeight=size+8; l.color=new Color(35,35,45,255);
-    n.setPosition(0,y,0); this.root?.addChild(n); return l;
+    n.setPosition(0,y,0); this.contentRoot?.addChild(n); return l;
   }
 
   private makeButton(text:string,x:number,y:number,onTap:()=>void,w=210,h=76){
     const n=new Node(`Btn_${text}`); n.layer=Layers.Enum.UI_2D;
     n.addComponent(UITransform).setContentSize(w,h);
     const g=n.addComponent(Graphics); g.fillColor=new Color(235,240,252,255); g.roundRect(-w/2,-h/2,w,h,18); g.fill();
-    const l=n.addComponent(Label); l.string=text; l.fontSize=26; l.lineHeight=32; l.color=new Color(35,35,45,255);
-    n.setPosition(x,y,0); n.on(Node.EventType.TOUCH_END,onTap,this); this.root?.addChild(n); return n;
+
+    // Label 与 Graphics 分节点，避免同节点多 UI Renderer 在部分 Creator 版本中的渲染覆盖问题。
+    const labelNode=new Node('Label'); labelNode.layer=Layers.Enum.UI_2D;
+    labelNode.addComponent(UITransform).setContentSize(w,h);
+    const l=labelNode.addComponent(Label); l.string=text; l.fontSize=26; l.lineHeight=32; l.color=new Color(35,35,45,255);
+    n.addChild(labelNode);
+
+    n.setPosition(x,y,0);
+    n.on(Node.EventType.TOUCH_END,()=>{
+      const now=Date.now();
+      if(now-this.lastTapAt<this.tapGuardMs)return;
+      this.lastTapAt=now;
+      onTap();
+    },this);
+    this.contentRoot?.addChild(n);
+    return n;
   }
 
   private makeCat(name:string,y:number,color:Color){
     const n=new Node(name); n.layer=Layers.Enum.UI_2D;
     n.addComponent(UITransform).setContentSize(76,76);
     const g=n.addComponent(Graphics); g.fillColor=color; g.circle(0,0,32); g.fill();
-    n.setPosition(-220,y,0); this.root?.addChild(n); return n;
+    n.setPosition(-220,y,0); this.contentRoot?.addChild(n); return n;
   }
 
   private showHome(){
-    this.flow.goHome(); this.lastPage='home'; this.clear();
+    this.flow.goHome(); this.clear();
     this.makeText('影子小猫',420,56);
     this.makeText('现实与影子必须互相配合',340,28);
     this.makeButton('开始游戏',0,160,()=>this.startLevel(this.flow.save.unlockedLevel));
@@ -97,7 +146,7 @@ export class ShadowCatBootstrap extends Component {
   }
 
   private showLevels(page=this.levelsPage){
-    this.flow.openLevels(); this.lastPage='levels'; this.levelsPage=Math.max(0,Math.min(2,page)); this.clear();
+    this.flow.openLevels(); this.levelsPage=Math.max(0,Math.min(2,page)); this.clear();
     this.makeText('选择关卡',470,46);
     const start=this.levelsPage*10+1;
     const end=Math.min(30,start+9);
@@ -112,7 +161,7 @@ export class ShadowCatBootstrap extends Component {
   }
 
   private showTutorial(){
-    this.flow.openTutorial(); this.lastPage='tutorial'; this.clear();
+    this.flow.openTutorial(); this.clear();
     this.makeText('玩法说明',440,46);
     this.makeText('移动现实猫，影子猫会镜像移动',300,26);
     this.makeText('靠近机关后点击“互动”激活',235,26);
@@ -131,19 +180,19 @@ export class ShadowCatBootstrap extends Component {
 
   private renderPlaying(){
     if(!this.flow.core)return;
-    this.lastPage='playing'; this.clear();
-    this.makeText(`第 ${this.flow.level} 关`,540,38);
-    this.status=this.makeText('',480,22);
-    this.hint=this.makeText('移动到机关附近并点击互动',420,20);
+    this.clear();
+    this.makeText(`第 ${this.flow.level} 关`,500,38);
+    this.status=this.makeText('',445,22);
+    this.hint=this.makeText('移动到机关附近并点击互动',390,20);
     this.realCat=this.makeCat('RealCat',155,new Color(255,190,90,255));
     this.shadowCat=this.makeCat('ShadowCat',-155,new Color(115,105,180,255));
-    this.makeButton('↑',0,-315,()=>this.move('up'),140,70);
-    this.makeButton('←',-170,-400,()=>this.move('left'),140,70);
-    this.makeButton('↓',0,-400,()=>this.move('down'),140,70);
-    this.makeButton('→',170,-400,()=>this.move('right'),140,70);
-    this.makeButton('互动',-210,-510,()=>this.interact(),160,72);
-    this.makeButton('切换光照',0,-510,()=>this.toggleLight(),190,72);
-    this.makeButton('暂停',210,-510,()=>this.pause(),160,72);
+    this.makeButton('↑',0,-285,()=>this.move('up'),140,70);
+    this.makeButton('←',-170,-370,()=>this.move('left'),140,70);
+    this.makeButton('↓',0,-370,()=>this.move('down'),140,70);
+    this.makeButton('→',170,-370,()=>this.move('right'),140,70);
+    this.makeButton('互动',-210,-480,()=>this.interact(),160,72);
+    this.makeButton('切换光照',0,-480,()=>this.toggleLight(),190,72);
+    this.makeButton('暂停',210,-480,()=>this.pause(),160,72);
     this.syncActors(); this.refreshStatus();
   }
 
@@ -167,7 +216,7 @@ export class ShadowCatBootstrap extends Component {
 
   private pause(){
     if(this.flow.page!=='playing')return;
-    this.flow.pause(); this.clear(); this.lastPage='paused';
+    this.flow.pause(); this.clear();
     this.makeText('已暂停',260,54);
     this.makeButton('继续游戏',0,80,()=>this.resumeFromPause());
     this.makeButton('重新开始',0,-20,()=>this.startLevel(this.flow.level));
@@ -180,7 +229,7 @@ export class ShadowCatBootstrap extends Component {
   }
 
   private showResult(){
-    this.clear(); this.lastPage='result';
+    this.clear();
     if(this.flow.resultSuccess){
       this.makeText('通关成功',320,54);
       this.makeText(`星级：${'★'.repeat(this.flow.resultStars)}${'☆'.repeat(3-this.flow.resultStars)}`,230,34);
