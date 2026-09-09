@@ -146,7 +146,7 @@ export class ShadowCatBootstrap extends Component {
   private showLevels(page=this.levelsPage){
     this.flow.openLevels(); this.levelsPage=Math.max(0,Math.min(2,page)); this.clear();
     this.makeText('选择关卡',470,46);
-    const chapter=['镜像篇','追影篇','光影篇'][this.levelsPage];
+    const chapter=['镜像基础','镜像进阶 · 追影觉醒','光影变位'][this.levelsPage];
     this.makeText(chapter,415,24,new Color(75,75,110,255));
     const start=this.levelsPage*10+1;
     const end=Math.min(30,start+9);
@@ -163,10 +163,10 @@ export class ShadowCatBootstrap extends Component {
   private showTutorial(){
     this.flow.openTutorial(); this.clear();
     this.makeText('三种影子规则',440,46);
-    this.makeText('镜像篇：影子与现实反向移动',300,25);
-    this.makeText('追影篇：影子会落后数步，需要主动追步',225,25);
-    this.makeText('光影篇：切换明暗会改变影子的横向位置',150,25);
-    this.makeText('完成两侧机关，再满足出口条件即可通关',75,24);
+    this.makeText('镜像：影子与现实反向移动',300,25);
+    this.makeText('追影：影子落后数步，可主动让它追上',225,25);
+    this.makeText('光影：切换明暗会改变影子的横向位置',150,25);
+    this.makeText('光照机关始终可切换明暗，不与追影操作冲突',75,22);
     this.makeButton('返回首页',0,-300,()=>this.showHome());
   }
 
@@ -194,7 +194,7 @@ export class ShadowCatBootstrap extends Component {
     if(c.level.lightGates>0){
       for(let i=0;i<Math.min(3,c.level.lightGates);i++){
         const x=-60+i*80;
-        this.makePanel(`LightGate_${i}`,x,0,24,260,new Color(230,205,115,180));
+        this.makePanel(`LightSeal_${i}`,x,0,24,260,new Color(230,205,115,180));
       }
     }
 
@@ -205,22 +205,25 @@ export class ShadowCatBootstrap extends Component {
     this.makeButton('←',-155,-375,()=>this.move('left'),130,64);
     this.makeButton('↓',0,-375,()=>this.move('down'),130,64);
     this.makeButton('→',155,-375,()=>this.move('right'),130,64);
-    this.makeButton('互动',-220,-470,()=>this.interact(),145,68);
 
     if(c.level.shadowMode==='lag'){
-      this.makeButton('影子追步',0,-470,()=>this.catchUpShadow(),175,68);
+      this.makeButton('互动',-240,-470,()=>this.interact(),130,64);
+      this.makeButton('影子追步',-80,-470,()=>this.catchUpShadow(),145,64);
+      this.makeButton('切换光照',85,-470,()=>this.toggleLight(),145,64);
+      this.makeButton('暂停',240,-470,()=>this.pause(),120,64);
     }else{
+      this.makeButton('互动',-220,-470,()=>this.interact(),145,68);
       this.makeButton('切换光照',0,-470,()=>this.toggleLight(),175,68);
+      this.makeButton('暂停',220,-470,()=>this.pause(),145,68);
     }
-    this.makeButton('暂停',220,-470,()=>this.pause(),145,68);
     this.syncActors(); this.refreshStatus();
   }
 
   private modeText(){
     const mode=this.flow.core?.level.shadowMode;
-    if(mode==='lag')return '追影篇 · 影子会延迟执行动作';
-    if(mode==='light-shift')return '光影篇 · 明暗决定影子横向位置';
-    return '镜像篇 · 影子与现实反向移动';
+    if(mode==='lag')return '追影模式 · 影子会延迟执行动作';
+    if(mode==='light-shift')return '光影模式 · 明暗决定影子横向位置';
+    return '镜像模式 · 影子与现实反向移动';
   }
 
   private modeHint(){
@@ -246,7 +249,10 @@ export class ShadowCatBootstrap extends Component {
   private toggleLight(){
     if(this.flow.page!=='playing')return;
     this.inputCtl?.toggleLight(); this.syncActors(); this.refreshStatus();
-    if(this.hint&&this.flow.core?.level.shadowMode==='light-shift')this.hint.string=`光照已切换为${this.flow.core.light?'亮':'暗'}，影子位置已改变`;
+    if(this.hint){
+      const c=this.flow.core;
+      this.hint.string=c?.level.shadowMode==='light-shift'?`光照已切换为${c.light?'亮':'暗'}，影子位置已改变`:`光照已切换为${c?.light?'亮':'暗'}，重新判断光照机关`;
+    }
   }
 
   private interact(){
@@ -311,6 +317,7 @@ export class ShadowCatBootstrap extends Component {
     if(this.flow.page!=='playing')return;
     if(e.keyCode===KeyCode.SPACE){this.interact();return;}
     if(e.keyCode===KeyCode.KEY_F&&this.flow.core?.level.shadowMode==='lag'){this.catchUpShadow();return;}
+    if(e.keyCode===KeyCode.KEY_L){this.toggleLight();return;}
     const map:Partial<Record<KeyCode,MoveDir>>={
       [KeyCode.ARROW_LEFT]:'left',[KeyCode.KEY_A]:'left',
       [KeyCode.ARROW_RIGHT]:'right',[KeyCode.KEY_D]:'right',
