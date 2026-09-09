@@ -18,6 +18,7 @@ export class ShadowCatBootstrap extends Component {
   private contentRoot:Node|null=null;
   private status:Label|null=null;
   private hint:Label|null=null;
+  private modeLabel:Label|null=null;
   private realCat:Node|null=null;
   private shadowCat:Node|null=null;
   private levelsPage=0;
@@ -53,13 +54,10 @@ export class ShadowCatBootstrap extends Component {
 
   private onAppHide(){
     this.flow.onHide();
-    if(this.flow.page==='playing') this.pause();
+    if(this.flow.page==='playing')this.pause();
   }
 
-  private onAppShow(){
-    this.flow.onShow();
-    // 从系统后台返回后保持暂停，让玩家主动继续，避免误触和计时突变。
-  }
+  private onAppShow(){ this.flow.onShow(); }
 
   private ensureUiRoot(){
     if(this.root)return;
@@ -68,7 +66,7 @@ export class ShadowCatBootstrap extends Component {
 
     const canvasNode=new Node('ShadowCatCanvas');
     canvasNode.layer=Layers.Enum.UI_2D;
-    canvasNode.addComponent(Canvas);
+    const canvas=canvasNode.addComponent(Canvas);
     canvasNode.addComponent(UITransform).setContentSize(720,1280);
 
     const cameraNode=new Node('UICamera');
@@ -78,13 +76,13 @@ export class ShadowCatBootstrap extends Component {
     cam.visibility=Layers.Enum.UI_2D;
     cameraNode.setPosition(0,0,1000);
     canvasNode.addChild(cameraNode);
+    canvas.cameraComponent=cam;
 
     const content=new Node('SafeContent');
     content.layer=Layers.Enum.UI_2D;
     content.addComponent(UITransform).setContentSize(720,1280);
     canvasNode.addChild(content);
 
-    // 依据可见区域做保守缩放，重要按钮再额外留出上下边距。
     const visible=view.getVisibleSize();
     const scale=Math.min(1,visible.width/720,visible.height/1280);
     content.setScale(scale,scale,1);
@@ -97,35 +95,35 @@ export class ShadowCatBootstrap extends Component {
   private clear(){
     if(!this.contentRoot)return;
     [...this.contentRoot.children].forEach(n=>n.destroy());
-    this.status=null; this.hint=null; this.realCat=null; this.shadowCat=null;
+    this.status=null; this.hint=null; this.modeLabel=null; this.realCat=null; this.shadowCat=null;
   }
 
-  private makeText(text:string,y:number,size=36){
+  private makeText(text:string,y:number,size=36,color=new Color(35,35,45,255)){
     const n=new Node('Text'); n.layer=Layers.Enum.UI_2D;
     n.addComponent(UITransform).setContentSize(660,90);
-    const l=n.addComponent(Label); l.string=text; l.fontSize=size; l.lineHeight=size+8; l.color=new Color(35,35,45,255);
+    const l=n.addComponent(Label); l.string=text; l.fontSize=size; l.lineHeight=size+8; l.color=color;
     n.setPosition(0,y,0); this.contentRoot?.addChild(n); return l;
   }
 
-  private makeButton(text:string,x:number,y:number,onTap:()=>void,w=210,h=76){
-    const n=new Node(`Btn_${text}`); n.layer=Layers.Enum.UI_2D;
+  private makePanel(name:string,x:number,y:number,w:number,h:number,color:Color){
+    const n=new Node(name); n.layer=Layers.Enum.UI_2D;
     n.addComponent(UITransform).setContentSize(w,h);
-    const g=n.addComponent(Graphics); g.fillColor=new Color(235,240,252,255); g.roundRect(-w/2,-h/2,w,h,18); g.fill();
+    const g=n.addComponent(Graphics); g.fillColor=color; g.roundRect(-w/2,-h/2,w,h,18); g.fill();
+    n.setPosition(x,y,0); this.contentRoot?.addChild(n); return n;
+  }
 
-    // Label 与 Graphics 分节点，避免同节点多 UI Renderer 在部分 Creator 版本中的渲染覆盖问题。
+  private makeButton(text:string,x:number,y:number,onTap:()=>void,w=210,h=76){
+    const n=this.makePanel(`Btn_${text}`,x,y,w,h,new Color(235,240,252,255));
     const labelNode=new Node('Label'); labelNode.layer=Layers.Enum.UI_2D;
     labelNode.addComponent(UITransform).setContentSize(w,h);
     const l=labelNode.addComponent(Label); l.string=text; l.fontSize=26; l.lineHeight=32; l.color=new Color(35,35,45,255);
     n.addChild(labelNode);
-
-    n.setPosition(x,y,0);
     n.on(Node.EventType.TOUCH_END,()=>{
       const now=Date.now();
       if(now-this.lastTapAt<this.tapGuardMs)return;
       this.lastTapAt=now;
       onTap();
     },this);
-    this.contentRoot?.addChild(n);
     return n;
   }
 
@@ -139,7 +137,7 @@ export class ShadowCatBootstrap extends Component {
   private showHome(){
     this.flow.goHome(); this.clear();
     this.makeText('影子小猫',420,56);
-    this.makeText('现实与影子必须互相配合',340,28);
+    this.makeText('一只猫，两种世界规则',340,28);
     this.makeButton('开始游戏',0,160,()=>this.startLevel(this.flow.save.unlockedLevel));
     this.makeButton('关卡选择',0,60,()=>this.showLevels(0));
     this.makeButton('玩法说明',0,-40,()=>this.showTutorial());
@@ -148,25 +146,27 @@ export class ShadowCatBootstrap extends Component {
   private showLevels(page=this.levelsPage){
     this.flow.openLevels(); this.levelsPage=Math.max(0,Math.min(2,page)); this.clear();
     this.makeText('选择关卡',470,46);
+    const chapter=['镜像篇','追影篇','光影篇'][this.levelsPage];
+    this.makeText(chapter,415,24,new Color(75,75,110,255));
     const start=this.levelsPage*10+1;
     const end=Math.min(30,start+9);
     for(let i=start;i<=end;i++){
       const col=(i-start)%2,row=Math.floor((i-start)/2);
       const unlocked=i<=this.flow.save.unlockedLevel;
-      this.makeButton(unlocked?`第${i}关`:`第${i}关 🔒`,-130+col*260,320-row*105,()=>{if(unlocked)this.startLevel(i);},230,76);
+      this.makeButton(unlocked?`第${i}关`:`第${i}关 未解锁`,-130+col*260,300-row*100,()=>{if(unlocked)this.startLevel(i);},230,72);
     }
     if(this.levelsPage>0)this.makeButton('上一页',-130,-300,()=>this.showLevels(this.levelsPage-1));
     if(this.levelsPage<2)this.makeButton('下一页',130,-300,()=>this.showLevels(this.levelsPage+1));
-    this.makeButton('返回首页',0,-410,()=>this.showHome());
+    this.makeButton('返回首页',0,-400,()=>this.showHome());
   }
 
   private showTutorial(){
     this.flow.openTutorial(); this.clear();
-    this.makeText('玩法说明',440,46);
-    this.makeText('移动现实猫，影子猫会镜像移动',300,26);
-    this.makeText('靠近机关后点击“互动”激活',235,26);
-    this.makeText('中后期部分机关需要正确光照状态',170,26);
-    this.makeText('完成两侧机关后到右侧出口',105,26);
+    this.makeText('三种影子规则',440,46);
+    this.makeText('镜像篇：影子与现实反向移动',300,25);
+    this.makeText('追影篇：影子会落后数步，需要主动追步',225,25);
+    this.makeText('光影篇：切换明暗会改变影子的横向位置',150,25);
+    this.makeText('完成两侧机关，再满足出口条件即可通关',75,24);
     this.makeButton('返回首页',0,-300,()=>this.showHome());
   }
 
@@ -179,31 +179,74 @@ export class ShadowCatBootstrap extends Component {
   }
 
   private renderPlaying(){
-    if(!this.flow.core)return;
+    const c=this.flow.core;if(!c)return;
     this.clear();
-    this.makeText(`第 ${this.flow.level} 关`,500,38);
-    this.status=this.makeText('',445,22);
-    this.hint=this.makeText('移动到机关附近并点击互动',390,20);
-    this.realCat=this.makeCat('RealCat',155,new Color(255,190,90,255));
-    this.shadowCat=this.makeCat('ShadowCat',-155,new Color(115,105,180,255));
-    this.makeButton('↑',0,-285,()=>this.move('up'),140,70);
-    this.makeButton('←',-170,-370,()=>this.move('left'),140,70);
-    this.makeButton('↓',0,-370,()=>this.move('down'),140,70);
-    this.makeButton('→',170,-370,()=>this.move('right'),140,70);
-    this.makeButton('互动',-210,-480,()=>this.interact(),160,72);
-    this.makeButton('切换光照',0,-480,()=>this.toggleLight(),190,72);
-    this.makeButton('暂停',210,-480,()=>this.pause(),160,72);
+    this.makeText(`第 ${this.flow.level} 关`,520,36);
+    this.modeLabel=this.makeText(this.modeText(),470,22,new Color(80,70,130,255));
+    this.status=this.makeText('',430,20);
+    this.hint=this.makeText(this.modeHint(),390,19);
+
+    this.makePanel('RealWorld',0,150,650,170,new Color(255,245,222,255));
+    this.makePanel('ShadowWorld',0,-150,650,170,new Color(225,220,247,255));
+    this.makePanel('RealExit',275,150,36,110,new Color(170,225,170,255));
+    this.makePanel('ShadowExit',275,-150,36,110,new Color(155,190,215,255));
+
+    if(c.level.lightGates>0){
+      for(let i=0;i<Math.min(3,c.level.lightGates);i++){
+        const x=-60+i*80;
+        this.makePanel(`LightGate_${i}`,x,0,24,260,new Color(230,205,115,180));
+      }
+    }
+
+    this.realCat=this.makeCat('RealCat',155,new Color(255,170,75,255));
+    this.shadowCat=this.makeCat('ShadowCat',-155,new Color(105,90,170,255));
+
+    this.makeButton('↑',0,-300,()=>this.move('up'),130,64);
+    this.makeButton('←',-155,-375,()=>this.move('left'),130,64);
+    this.makeButton('↓',0,-375,()=>this.move('down'),130,64);
+    this.makeButton('→',155,-375,()=>this.move('right'),130,64);
+    this.makeButton('互动',-220,-470,()=>this.interact(),145,68);
+
+    if(c.level.shadowMode==='lag'){
+      this.makeButton('影子追步',0,-470,()=>this.catchUpShadow(),175,68);
+    }else{
+      this.makeButton('切换光照',0,-470,()=>this.toggleLight(),175,68);
+    }
+    this.makeButton('暂停',220,-470,()=>this.pause(),145,68);
     this.syncActors(); this.refreshStatus();
+  }
+
+  private modeText(){
+    const mode=this.flow.core?.level.shadowMode;
+    if(mode==='lag')return '追影篇 · 影子会延迟执行动作';
+    if(mode==='light-shift')return '光影篇 · 明暗决定影子横向位置';
+    return '镜像篇 · 影子与现实反向移动';
+  }
+
+  private modeHint(){
+    const c=this.flow.core;
+    if(!c)return '';
+    if(c.level.shadowMode==='lag')return `影子当前还有 ${c.pendingShadowSteps()} 步未跟上`;
+    if(c.level.shadowMode==='light-shift')return '切换光照，观察影子位置变化后再解机关';
+    return '观察上下两个世界，同时规划现实与影子';
   }
 
   private move(dir:MoveDir){
     if(this.flow.page!=='playing')return;
-    this.inputCtl?.move(dir); this.syncActors();
+    this.inputCtl?.move(dir); this.syncActors(); this.refreshStatus();
+  }
+
+  private catchUpShadow(){
+    if(this.flow.page!=='playing'||!this.flow.core)return;
+    const moved=this.inputCtl?.catchUpShadow()||false;
+    if(this.hint)this.hint.string=moved?`影子追上一步，还剩 ${this.flow.core.pendingShadowSteps()} 步`:'影子已经跟上现实';
+    this.syncActors(); this.refreshStatus();
   }
 
   private toggleLight(){
     if(this.flow.page!=='playing')return;
-    this.inputCtl?.toggleLight(); this.refreshStatus();
+    this.inputCtl?.toggleLight(); this.syncActors(); this.refreshStatus();
+    if(this.hint&&this.flow.core?.level.shadowMode==='light-shift')this.hint.string=`光照已切换为${this.flow.core.light?'亮':'暗'}，影子位置已改变`;
   }
 
   private interact(){
@@ -233,14 +276,15 @@ export class ShadowCatBootstrap extends Component {
     if(this.flow.resultSuccess){
       this.makeText('通关成功',320,54);
       this.makeText(`星级：${'★'.repeat(this.flow.resultStars)}${'☆'.repeat(3-this.flow.resultStars)}`,230,34);
-      if(this.flow.level<30)this.makeButton('下一关',0,70,()=>{this.flow.nextLevel();if(this.flow.core){this.inputCtl=new InputController(this.flow.core);this.resolver=new InteractionResolver(this.flow.core);this.renderPlaying();}});
+      this.makeText(this.modeText(),170,22);
+      if(this.flow.level<30)this.makeButton('下一关',0,45,()=>{this.flow.nextLevel();if(this.flow.core){this.inputCtl=new InputController(this.flow.core);this.resolver=new InteractionResolver(this.flow.core);this.renderPlaying();}});
     }else{
       this.makeText('时间到',320,54);
       this.makeText('本次进度不会覆盖最佳成绩',230,26);
     }
-    this.makeButton('重试',0,-40,()=>this.startLevel(this.flow.level));
-    this.makeButton('关卡选择',0,-140,()=>this.showLevels(Math.floor((this.flow.level-1)/10)));
-    this.makeButton('返回首页',0,-240,()=>this.showHome());
+    this.makeButton('重试',0,-50,()=>this.startLevel(this.flow.level));
+    this.makeButton('关卡选择',0,-150,()=>this.showLevels(Math.floor((this.flow.level-1)/10)));
+    this.makeButton('返回首页',0,-250,()=>this.showHome());
   }
 
   private syncActors(){
@@ -253,7 +297,8 @@ export class ShadowCatBootstrap extends Component {
     if(!this.status||!this.flow.core)return;
     const c=this.flow.core;
     const time=c.level.timeLimit>0?` · ${Math.max(0,Math.ceil(c.level.timeLimit-c.elapsed))}s`:'';
-    this.status.string=`现实 ${c.realActivated}/${c.level.realSwitches} · 影子 ${c.shadowActivated}/${c.level.shadowSwitches} · ${c.light?'亮':'暗'}${time}`;
+    const lag=c.level.shadowMode==='lag'?` · 待追 ${c.pendingShadowSteps()} 步`:'';
+    this.status.string=`现实 ${c.realActivated}/${c.level.realSwitches} · 影子 ${c.shadowActivated}/${c.level.shadowSwitches} · ${c.light?'亮':'暗'}${lag}${time}`;
   }
 
   private onKeyDown(e:EventKeyboard){
@@ -265,6 +310,7 @@ export class ShadowCatBootstrap extends Component {
     }
     if(this.flow.page!=='playing')return;
     if(e.keyCode===KeyCode.SPACE){this.interact();return;}
+    if(e.keyCode===KeyCode.KEY_F&&this.flow.core?.level.shadowMode==='lag'){this.catchUpShadow();return;}
     const map:Partial<Record<KeyCode,MoveDir>>={
       [KeyCode.ARROW_LEFT]:'left',[KeyCode.KEY_A]:'left',
       [KeyCode.ARROW_RIGHT]:'right',[KeyCode.KEY_D]:'right',
