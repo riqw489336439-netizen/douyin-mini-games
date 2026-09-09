@@ -6,9 +6,17 @@ export const SHADOW_CAT_LEVELS: ShadowCatLevel[] = Array.from({length:30},(_,i)=
   let shadowLagSteps=0;
   let lightShift=0;
 
-  // 不是单纯增加数值：按章节逐步改变影子的运动规则。
   if(id>=16&&id<=20){ shadowMode='lag'; shadowLagSteps=id>=19?2:1; }
   if(id>=21){ shadowMode='light-shift'; lightShift=id>=26?12:8; }
+
+  // 真人节奏预留：新机制首次出现时不同时压缩时间，避免“逻辑可解但来不及理解”。
+  let timeLimit=0;
+  if(id>=6&&id<=10) timeLimit=100;
+  else if(id>=11&&id<=15) timeLimit=95;
+  else if(id>=16&&id<=18) timeLimit=105;
+  else if(id>=19&&id<=20) timeLimit=115;
+  else if(id>=21&&id<=25) timeLimit=100;
+  else if(id>=26) timeLimit=90;
 
   return {
     id,
@@ -20,7 +28,7 @@ export const SHADOW_CAT_LEVELS: ShadowCatLevel[] = Array.from({length:30},(_,i)=
     shadowMode,
     shadowLagSteps,
     lightShift,
-    timeLimit: id<6?0:id<15?90:id<24?75:60,
+    timeLimit,
   };
 });
 
