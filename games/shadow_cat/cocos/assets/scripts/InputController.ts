@@ -9,7 +9,7 @@ export interface InputResult {
 
 /**
  * 将触控/键盘输入与核心玩法解耦。
- * 后续接 Cocos Button/Touch 时只调用这里，避免 UI 层直接改 Core 状态。
+ * UI 层只调用这里，不直接改 Core 状态。
  */
 export class InputController {
   constructor(private core:Core, private step=36){}
@@ -31,5 +31,10 @@ export class InputController {
     if(this.core.finished) return false;
     this.core.toggleLight();
     return true;
+  }
+
+  catchUpShadow(){
+    if(this.core.finished)return false;
+    return this.core.flushShadowLag();
   }
 }
