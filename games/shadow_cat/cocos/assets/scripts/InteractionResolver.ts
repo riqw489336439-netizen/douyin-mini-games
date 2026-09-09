@@ -27,8 +27,12 @@ export class InteractionResolver {
     return {x:this.switchX(index,this.core.level.shadowSwitches),y:-155};
   }
 
+  private isLightGated(index:number){
+    return index<this.core.level.lightGates;
+  }
+
   private lightAllows(index:number){
-    if(this.core.level.lightGates<=0)return true;
+    if(!this.isLightGated(index))return true;
     return this.core.light===(index%2);
   }
 
@@ -39,7 +43,7 @@ export class InteractionResolver {
     for(let i=0;i<this.core.level.realSwitches;i++){
       if(this.core.isRealDone(i))continue;
       if(near(this.core.real,this.realSwitch(i))){
-        if(!this.lightAllows(i)){ notes.push('现实机关需要切换光照'); continue; }
+        if(!this.lightAllows(i)){ notes.push(`现实机关 ${i+1} 需要切换光照`); continue; }
         if(this.core.activateReal(i)){ changed=true; notes.push(`现实机关 ${i+1} 已激活`); }
       }
     }
@@ -47,7 +51,7 @@ export class InteractionResolver {
     for(let i=0;i<this.core.level.shadowSwitches;i++){
       if(this.core.isShadowDone(i))continue;
       if(near(this.core.shadow,this.shadowSwitch(i))){
-        if(!this.lightAllows(i)){ notes.push('影子机关需要切换光照'); continue; }
+        if(!this.lightAllows(i)){ notes.push(`影子机关 ${i+1} 需要切换光照`); continue; }
         if(this.core.activateShadow(i)){ changed=true; notes.push(`影子机关 ${i+1} 已激活`); }
       }
     }
