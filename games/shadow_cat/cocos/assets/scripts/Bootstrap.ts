@@ -20,6 +20,7 @@ export class ShadowCatBootstrap extends Component {
   private status:Label|null=null;
   private realCat:Node|null=null;
   private shadowCat:Node|null=null;
+  private pauseOverlay:Node[]=[];
 
   start(){
     this.ensureUiRoot();
@@ -65,6 +66,7 @@ export class ShadowCatBootstrap extends Component {
     this.status=null;
     this.realCat=null;
     this.shadowCat=null;
+    this.pauseOverlay=[];
   }
 
   private makeText(text:string,y:number,size=36){
@@ -129,6 +131,11 @@ export class ShadowCatBootstrap extends Component {
     this.flow.startLevel(level);
     if(!this.flow.core)return;
     this.inputCtl=new InputController(this.flow.core);
+    this.renderPlaying();
+  }
+
+  private renderPlaying(){
+    if(!this.flow.core)return;
     this.clear();
     this.makeText(`第 ${this.flow.level} 关`,540,38);
     this.status=this.makeText('',470,22);
@@ -144,13 +151,27 @@ export class ShadowCatBootstrap extends Component {
     this.syncActors(); this.refreshStatus();
   }
 
-  private move(dir:MoveDir){ this.inputCtl?.move(dir); this.syncActors(); }
+  private move(dir:MoveDir){
+    if(this.flow.page!=='playing')return;
+    this.inputCtl?.move(dir);
+    this.syncActors();
+  }
 
   private pause(){
     this.flow.pause();
     if(this.flow.page!=='paused')return;
-    this.makeButton('继续',-120,0,()=>{ this.flow.resume(); this.startLevel(this.flow.level); });
-    this.makeButton('返回首页',120,0,()=>this.showHome());
+    const continueBtn=this.makeButton('继续',-120,0,()=>this.resumeFromPause());
+    const homeBtn=this.makeButton('返回首页',120,0,()=>this.showHome());
+    this.pauseOverlay=[continueBtn,homeBtn];
+  }
+
+  private resumeFromPause(){
+    if(this.flow.page!=='paused')return;
+    this.flow.resume();
+    this.pauseOverlay.forEach(n=>n.destroy());
+    this.pauseOverlay=[];
+    this.syncActors();
+    this.refreshStatus();
   }
 
   private syncActors(){
@@ -166,6 +187,11 @@ export class ShadowCatBootstrap extends Component {
   }
 
   private onKeyDown(e:EventKeyboard){
+    if(e.keyCode===KeyCode.ESCAPE){
+      if(this.flow.page==='playing') this.pause();
+      else if(this.flow.page==='paused') this.resumeFromPause();
+      return;
+    }
     if(this.flow.page!=='playing')return;
     const map:Partial<Record<KeyCode,MoveDir>>={
       [KeyCode.ARROW_LEFT]:'left',[KeyCode.KEY_A]:'left',
