@@ -3,6 +3,8 @@ import { Core, Vec } from './Core';
 export interface InteractionResult {
   changed:boolean;
   completed:boolean;
+  realAtExit:boolean;
+  shadowAtExit:boolean;
   message:string;
 }
 
@@ -27,11 +29,10 @@ export class InteractionResolver {
 
   private lightAllows(index:number){
     if(this.core.level.lightGates<=0)return true;
-    // 中后期机关交替要求明/暗状态，形成实际玩法差异。
     return this.core.light===(index%2);
   }
 
-  interact(){
+  interact():InteractionResult{
     let changed=false;
     const notes:string[]=[];
 
@@ -51,15 +52,13 @@ export class InteractionResolver {
       }
     }
 
-    const realExit=near(this.core.real,{x:260,y:155},64);
-    const shadowExit=near(this.core.shadow,{x:260,y:-155},64);
-    const completed=this.core.canExit(realExit,shadowExit);
+    const realAtExit=near(this.core.real,{x:260,y:155},64);
+    const shadowAtExit=near(this.core.shadow,{x:260,y:-155},64);
+    const completed=this.core.canExit(realAtExit,shadowAtExit);
 
-    if(!changed&&!completed&&!notes.length){
-      notes.push('附近没有可互动机关');
-    }
+    if(!changed&&!completed&&!notes.length) notes.push('附近没有可互动机关');
     if(completed) notes.push('出口条件已满足');
 
-    return {changed,completed,message:notes.join(' · ')} as InteractionResult;
+    return {changed,completed,realAtExit,shadowAtExit,message:notes.join(' · ')};
   }
 }
