@@ -44,8 +44,10 @@ export class GameFlow {
   tryComplete(realAtExit:boolean,shadowAtExit:boolean){
     if(this.page!=='playing'||!this.core)return false;
     if(!this.core.complete(realAtExit,shadowAtExit))return false;
-    const ratio=this.core.level.timeLimit>0?this.core.elapsed/this.core.level.timeLimit:0;
-    this.resultStars=ratio<=0.5?3:ratio<=0.8?2:1;
+    const limit=this.core.level.timeLimit;
+    const ratio=limit>0?this.core.elapsed/limit:0;
+    // 三星标准给正常观察/试错留余量；星级是奖励，不影响继续闯关。
+    this.resultStars=limit<=0?3:ratio<=0.65?3:ratio<=0.9?2:1;
     this.resultSuccess=true;
     SaveState.completeLevel(this.save,this.level,this.resultStars);
     this.page='result';
@@ -60,6 +62,7 @@ export class GameFlow {
   onHide(nowMs=Date.now()){ this.backgroundAt=nowMs; }
   onShow(nowMs=Date.now()){
     if(!this.backgroundAt||!this.core)return;
+    // 后台停留时间不计入关卡倒计时；返回后由 Bootstrap 保持暂停等待玩家主动继续。
     this.backgroundAt=0;
   }
 }
