@@ -31,16 +31,16 @@ export function runExtremeSimulationChecks():ExtremeCheck[]{
   });
 
   const flow=new GameFlow();
-  flow.save=SaveState.fresh();
-  flow.startLevel(1);
+  flow.save={...SaveState.fresh(),unlockedLevel:6};
+  flow.startLevel(6);
   if(flow.core){
-    flow.core.elapsed=999;
+    flow.core.elapsed=flow.core.level.timeLimit+1;
     flow.update(0.016);
   }
   out.push({
     name:'timeout-no-unlock',
-    pass:flow.page==='playing'||(flow.page==='result'&&flow.save.unlockedLevel===1&&!flow.resultSuccess),
-    detail:`page=${flow.page}, unlock=${flow.save.unlockedLevel}, success=${flow.resultSuccess}`,
+    pass:flow.page==='result'&&flow.save.unlockedLevel===6&&!flow.resultSuccess&&flow.resultStars===0,
+    detail:`page=${flow.page}, unlock=${flow.save.unlockedLevel}, success=${flow.resultSuccess}, stars=${flow.resultStars}`,
   });
 
   const endFlow=new GameFlow();
